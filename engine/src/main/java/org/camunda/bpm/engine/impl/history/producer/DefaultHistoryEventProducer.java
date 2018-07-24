@@ -15,6 +15,7 @@ package org.camunda.bpm.engine.impl.history.producer;
 import static org.camunda.bpm.engine.impl.util.ExceptionUtil.createJobExceptionByteArray;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import org.camunda.bpm.engine.batch.Batch;
@@ -546,7 +547,22 @@ public class DefaultHistoryEventProducer implements HistoryEventProducer {
       evt.setDurationInMillis(evt.getEndTime().getTime()-evt.getStartTime().getTime());
     }
 
-    // TODO: calculate & set removal time (CAM-9201)
+    if (executionEntity.getSuperExecution() == null) {
+
+      // determine root HPI time-to-live
+      Integer ttl = Context.getCommandContext()
+        .getProcessDefinitionManager()
+        .findLatestProcessDefinitionById(executionEntity.getProcessDefinitionId())
+        .getHistoryTimeToLive();
+
+      if (ttl != null) {
+        // set root HPI removal time
+        Date removalTime = determineRemovalTime(ttl);
+        evt.setRemovalTime(removalTime);
+
+        // TODO: find & set child HPIs removal time
+      }
+    }
 
     // set delete reason (if applicable).
     if (executionEntity.getDeleteReason() != null) {
@@ -554,6 +570,11 @@ public class DefaultHistoryEventProducer implements HistoryEventProducer {
     }
 
     return evt;
+  }
+
+  protected Date determineRemovalTime(int ttl) {
+    Date currentTime = ClockUtil.getCurrentTime();
+    return new Date(currentTime.getTime() + ttl);
   }
 
   protected void determineEndState(ExecutionEntity executionEntity, HistoricProcessInstanceEventEntity evt) {
