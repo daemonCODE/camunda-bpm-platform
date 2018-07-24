@@ -15,6 +15,7 @@ package org.camunda.bpm.engine.impl.history.producer;
 import static org.camunda.bpm.engine.impl.util.ExceptionUtil.createJobExceptionByteArray;
 
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
@@ -540,8 +541,9 @@ public class DefaultHistoryEventProducer implements HistoryEventProducer {
     determineEndState(executionEntity, evt);
 
     // set end activity id
+    Date endTime = ClockUtil.getCurrentTime();
     evt.setEndActivityId(executionEntity.getActivityId());
-    evt.setEndTime(ClockUtil.getCurrentTime());
+    evt.setEndTime(endTime);
 
     if(evt.getStartTime() != null) {
       evt.setDurationInMillis(evt.getEndTime().getTime()-evt.getStartTime().getTime());
@@ -557,7 +559,7 @@ public class DefaultHistoryEventProducer implements HistoryEventProducer {
 
       if (ttl != null) {
         // set root HPI removal time
-        Date removalTime = determineRemovalTime(ttl);
+        Date removalTime = determineRemovalTime(endTime, ttl);
         evt.setRemovalTime(removalTime);
 
         // TODO: find & set child HPIs removal time
@@ -572,9 +574,12 @@ public class DefaultHistoryEventProducer implements HistoryEventProducer {
     return evt;
   }
 
-  protected Date determineRemovalTime(int ttl) {
-    Date currentTime = ClockUtil.getCurrentTime();
-    return new Date(currentTime.getTime() + ttl);
+  protected Date determineRemovalTime(Date endTime, int ttl) {
+    Calendar removeTime = Calendar.getInstance();
+    removeTime.setTime(endTime);
+    removeTime.add(Calendar.DATE, ttl);
+
+    return removeTime.getTime();
   }
 
   protected void determineEndState(ExecutionEntity executionEntity, HistoricProcessInstanceEventEntity evt) {
