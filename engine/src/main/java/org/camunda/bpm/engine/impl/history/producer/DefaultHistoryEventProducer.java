@@ -553,16 +553,16 @@ public class DefaultHistoryEventProducer implements HistoryEventProducer {
 
       // determine root HPI time-to-live
       Integer ttl = Context.getCommandContext()
-        .getProcessDefinitionManager()
-        .findLatestProcessDefinitionById(executionEntity.getProcessDefinitionId())
+        .getProcessEngineConfiguration()
+        .getDeploymentCache()
+        .findDeployedProcessDefinitionById(executionEntity.getProcessDefinitionId())
         .getHistoryTimeToLive();
 
       if (ttl != null) {
+        // TODO: find & set child HPIs removal time
         // set root HPI removal time
         Date removalTime = determineRemovalTime(endTime, ttl);
         evt.setRemovalTime(removalTime);
-
-        // TODO: find & set child HPIs removal time
       }
     }
 
