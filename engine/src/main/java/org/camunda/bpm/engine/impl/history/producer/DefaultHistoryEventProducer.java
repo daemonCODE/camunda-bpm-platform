@@ -559,10 +559,11 @@ public class DefaultHistoryEventProducer implements HistoryEventProducer {
         .getHistoryTimeToLive();
 
       if (ttl != null) {
-        // TODO: find & set child HPIs removal time
-        // set root HPI removal time
+        // set hierarchical HPIs removal time
         Date removalTime = determineRemovalTime(endTime, ttl);
-        evt.setRemovalTime(removalTime);
+        Context.getCommandContext()
+          .getHistoricProcessInstanceManager()
+          .addRemovalTimeToProcessInstancesByRootId(executionEntity.getProcessInstanceId(), removalTime);
       }
     }
 

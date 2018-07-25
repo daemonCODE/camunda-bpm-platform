@@ -949,21 +949,29 @@ public class HistoricProcessInstanceTest extends PluggableProcessEngineTestCase 
    * See: https://app.camunda.com/jira/browse/CAM-9200
    * */
   @Deployment(resources = {
-    "org/camunda/bpm/engine/test/api/runtime/nestedSubProcess.bpmn20.xml",
+    "org/camunda/bpm/engine/test/api/runtime/nestedSubProcessHierarchy.bpmn20.xml",
+    "org/camunda/bpm/engine/test/api/runtime/nestedSubProcessAsync.bpmn20.xml",
     "org/camunda/bpm/engine/test/api/runtime/subProcess.bpmn20.xml"
   })
-  public void testRootRemovalTimeWithHierarchicalHPI() {
+  public void testRootRemovalTimeWithMultilevelHierarchicalHPI() {
     // given
-    ProcessInstance processInstance = runtimeService.startProcessInstanceByKey("nestedSimpleSubProcess");
+    ProcessInstance processInstance = runtimeService.startProcessInstanceByKey("nestedHierarchicalProcess");
     repositoryService.updateProcessDefinitionHistoryTimeToLive(processInstance.getProcessDefinitionId(), 3);
 
-    HistoricProcessInstance childHistoricProcessInstance = historyService.createHistoricProcessInstanceQuery()
+    HistoricProcessInstance middleChildHistoricProcessInstance = historyService.createHistoricProcessInstanceQuery()
       .superProcessInstanceId(processInstance.getId())
+      .singleResult();
+
+    Job job = managementService.createJobQuery().processInstanceId(middleChildHistoricProcessInstance.getId()).singleResult();
+    managementService.executeJob(job.getId());
+
+    HistoricProcessInstance lastChildHistoricProcessInstance = historyService.createHistoricProcessInstanceQuery()
+      .superProcessInstanceId(middleChildHistoricProcessInstance.getId())
       .singleResult();
 
     // when
     Task userTask = taskService.createTaskQuery()
-      .processInstanceId(childHistoricProcessInstance.getId())
+      .processInstanceId(lastChildHistoricProcessInstance.getId())
       .singleResult();
     taskService.complete(userTask.getId());
 
@@ -971,18 +979,24 @@ public class HistoricProcessInstanceTest extends PluggableProcessEngineTestCase 
       .processInstanceId(processInstance.getId())
       .singleResult();
 
-//    childHistoricProcessInstance = historyService.createHistoricProcessInstanceQuery()
-//      .processInstanceId(childHistoricProcessInstance.getId())
-//      .singleResult();
+    middleChildHistoricProcessInstance = historyService.createHistoricProcessInstanceQuery()
+      .processInstanceId(middleChildHistoricProcessInstance.getId())
+      .singleResult();
+
+    lastChildHistoricProcessInstance = historyService.createHistoricProcessInstanceQuery()
+      .superProcessInstanceId(middleChildHistoricProcessInstance.getId())
+      .singleResult();
 
     // then
     assertNotNull(rootHistoricProcessInstance.getEndTime());
     assertNotNull(rootHistoricProcessInstance.getRemovalTime());
     assertTrue(rootHistoricProcessInstance.getRemovalTime().after(rootHistoricProcessInstance.getEndTime()));
 
-    // TODO: confirm child HPI removal time setting
-//    assertNotNull(childHistoricProcessInstance.getRemovalTime());
-//    assertEquals(rootHistoricProcessInstance.getRemovalTime(), childHistoricProcessInstance.getRemovalTime());
+    assertNotNull(middleChildHistoricProcessInstance.getRemovalTime());
+    assertEquals(rootHistoricProcessInstance.getRemovalTime(), middleChildHistoricProcessInstance.getRemovalTime());
+
+    assertNotNull(lastChildHistoricProcessInstance.getRemovalTime());
+    assertEquals(rootHistoricProcessInstance.getRemovalTime(), lastChildHistoricProcessInstance.getRemovalTime());
 
     repositoryService.updateProcessDefinitionHistoryTimeToLive(processInstance.getProcessDefinitionId(), null);
   }
