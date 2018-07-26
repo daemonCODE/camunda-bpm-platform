@@ -919,7 +919,7 @@ public class HistoricProcessInstanceTest extends PluggableProcessEngineTestCase 
   }
 
   /**
-   * See: https://app.camunda.com/jira/browse/CAM-9200
+   * See: https://app.camunda.com/jira/browse/CAM-9201
    * */
   @Deployment(resources = {
     "org/camunda/bpm/engine/test/api/runtime/oneTaskProcess.bpmn20.xml"
@@ -946,14 +946,14 @@ public class HistoricProcessInstanceTest extends PluggableProcessEngineTestCase 
   }
 
   /**
-   * See: https://app.camunda.com/jira/browse/CAM-9200
+   * See: https://app.camunda.com/jira/browse/CAM-9202
    * */
   @Deployment(resources = {
     "org/camunda/bpm/engine/test/api/runtime/nestedSubProcessHierarchy.bpmn20.xml",
     "org/camunda/bpm/engine/test/api/runtime/nestedSubProcessAsync.bpmn20.xml",
     "org/camunda/bpm/engine/test/api/runtime/subProcess.bpmn20.xml"
   })
-  public void testRootRemovalTimeWithMultilevelHierarchicalHPI() {
+  public void testRootRemovalTimeWithMultilevelHierarchicalHPIAsync() {
     // given
     ProcessInstance processInstance = runtimeService.startProcessInstanceByKey("nestedHierarchicalProcess");
     repositoryService.updateProcessDefinitionHistoryTimeToLive(processInstance.getProcessDefinitionId(), 3);
@@ -999,6 +999,75 @@ public class HistoricProcessInstanceTest extends PluggableProcessEngineTestCase 
     assertEquals(rootHistoricProcessInstance.getRemovalTime(), lastChildHistoricProcessInstance.getRemovalTime());
 
     repositoryService.updateProcessDefinitionHistoryTimeToLive(processInstance.getProcessDefinitionId(), null);
+  }
+
+  /**
+   * See: https://app.camunda.com/jira/browse/CAM-9202
+   * */
+  public void testRootRemovalTimeWithMultilevelHierarchicalHPI() {
+    // given
+    BpmnModelInstance parentProcessInstance =
+      Bpmn.createExecutableProcess("nestedHierarchicalProcess")
+        .camundaHistoryTimeToLive(3)
+        .startEvent()
+          .callActivity("callActivity")
+          .calledElement("middleChildProcess")
+            .multiInstance()
+              .parallel()
+              .cardinality("3")
+            .multiInstanceDone()
+        .endEvent()
+        .done();
+
+    BpmnModelInstance middleSubprocessInstances =
+      Bpmn.createExecutableProcess("middleChildProcess")
+        .startEvent()
+          .callActivity()
+          .calledElement("lastChildProcess")
+            .multiInstance()
+              .sequential()
+              .cardinality("3")
+            .multiInstanceDone()
+        .endEvent("subMiddleEnd")
+        .done();
+
+    BpmnModelInstance lastSubprocessInstances =
+      Bpmn.createExecutableProcess("lastChildProcess")
+        .startEvent()
+        .endEvent("subLastEnd")
+        .done();
+
+    deployment(parentProcessInstance, middleSubprocessInstances, lastSubprocessInstances);
+
+    // when
+    ProcessInstance processInstance = runtimeService.startProcessInstanceByKey("nestedHierarchicalProcess");
+
+    HistoricProcessInstance rootHistoricProcessInstance = historyService.createHistoricProcessInstanceQuery()
+      .processInstanceId(processInstance.getId())
+      .singleResult();
+
+    List<HistoricProcessInstance> middleChildHistoricProcessInstances = historyService.createHistoricProcessInstanceQuery()
+      .superProcessInstanceId(processInstance.getId())
+      .list();
+
+    // then
+    assertNotNull(rootHistoricProcessInstance.getEndTime());
+    assertNotNull(rootHistoricProcessInstance.getRemovalTime());
+    assertTrue(rootHistoricProcessInstance.getRemovalTime().after(rootHistoricProcessInstance.getEndTime()));
+
+    for (HistoricProcessInstance middleChildHistoricProcessInstance: middleChildHistoricProcessInstances) {
+      assertNotNull(middleChildHistoricProcessInstance.getRemovalTime());
+      assertEquals(rootHistoricProcessInstance.getRemovalTime(), middleChildHistoricProcessInstance.getRemovalTime());
+
+      List<HistoricProcessInstance> lastChildHistoricProcessInstances = historyService.createHistoricProcessInstanceQuery()
+        .superProcessInstanceId(middleChildHistoricProcessInstance.getId())
+        .list();
+
+      for (HistoricProcessInstance lastChildHistoricProcessInstance :lastChildHistoricProcessInstances) {
+        assertNotNull(lastChildHistoricProcessInstance.getRemovalTime());
+        assertEquals(rootHistoricProcessInstance.getRemovalTime(), lastChildHistoricProcessInstance.getRemovalTime());
+      }
+    }
   }
 
   @Deployment(resources = {
